@@ -14,6 +14,9 @@ def read_bins(bin_size):
                     bins["start"].append(start)
                     bins["end"].append(start+bin_size)
                     start += bin_size
+            bins["chrom"].append(ch)
+            bins["start"].append(start)
+            bins["end"].append(start+1)
 
     return DataFrame(data = bins, copy=True)
 
@@ -35,7 +38,7 @@ def pixel_iter():
                             counts["count"].append(int(cnt))
                     i += 1
             yield DataFrame(data = counts, copy=True)
-            chr_bin += i
+            chr_bin += i + 1
 
 bin_size = 40000
 
