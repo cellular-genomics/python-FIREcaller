@@ -7,46 +7,73 @@ import cooler
 import statsmodels.api as sm
 import numpy as np
 import scipy.stats as st
+from cooler.sandbox.dask import read_table
 
 logging.basicConfig(level=logging.DEBUG)
 
-def count_cis_neighbors(mat, hic, bin_size):
+def region_to_bin(chr_start_bin, bin_size, chr, start):
+    """Translate genomic region to Cooler bin idx.
+
+    Parameters:
+    ----------
+    chr_start_bin : dict
+        Dictionary translating chromosome id to bin start index
+    bin_size : int
+        Size of the bin
+    chr : str
+        Chromosome
+    start : int
+        Start of the genomic region
+    """
+    return chr_start_bin[chr] + start // bin_size
+
+def count_cis_neighbors(mat, cooler_filename, bin_size, bin_no):
     """For each region from mappability file return the number of cis-neighbors within given range.
 
     Parameters
     ----------
     mat : DataFrame
         Pandas DataFrame consisting of genomic regions
-    hic : Cooler
-        HiC experiment of size bin_size
+    cooler_filename : str
+        Filename containing the HiC experiment in Cooler format (.mcool)
     bin_size : int
         Bin size
+    bin_no : int
+        Number of bins considered as neighbors
     """
+    hic = cooler.Cooler(f"{cooler_filename}::resolutions/{bin_size}")
+
+    start_bin = 0
+    chr_start_bin = dict()
+    for i, ch in enumerate(hic.chromnames):
+        chr_start_bin[ch] = start_bin
+        start_bin += hic.chromsizes[i]//bin_size + 1
     chr_size = {hic.chromnames[i]:hic.chromsizes[i] for i in range(len(hic.chromnames))}
 
-    cis_neighbours = list()
-    i = 0
-    for row in mat.itertuples(index=True):
+    pixels = read_table(f"{cooler_filename}::resolutions/{bin_size}/pixels")
+
+    # limit bins to only those which can be considered as neighbor
+    neighboring_bins = pixels[  (pixels["count"]>0) & (pixels.bin1_id != pixels.bin2_id) & ((pixels.bin2_id <= pixels.bin1_id + bin_no) | (pixels.bin1_id >= pixels.bin2_id - bin_no)) ]
+
+    # cache bin pairs' counts
+    bin_pair_counts = {(row.bin1_id << 32) + row.bin2_id : row.count for row in neighboring_bins.itertuples(index=False)}
+
+    cis_neighbors = list()
+    for row in mat.itertuples(index=False):
+        cis_neighbor_count = 0
         if row.chr in chr_size.keys() and row.end < chr_size[row.chr]:
-            # calculate left cis-neighbors
-            start = max(row.start - args.neighborhood_region, 0)
-            end = max(row.end - bin_size, 0)
-            cis_left = hic.matrix(balance=False).fetch(f"{row.chr}:{row.start}-{row.end}", f"{row.chr}:{start}-{end}")
-
-            # calculate right cis-neighbors
-            start = min(row.start + bin_size , chr_size[row.chr])
-            end = min(row.end + args.neighborhood_region, chr_size[row.chr])
-            cis_right = hic.matrix(balance=False).fetch(f"{row.chr}:{row.start}-{row.end}", f"{row.chr}:{start}-{end}")
-
-            cis_neighbor_count = sum(cis_left[0]) + sum(cis_right[0])
-        else:
-            cis_neighbor_count = 0
-        cis_neighbours.append(cis_neighbor_count)
-
-        i+=1
-        if i % 1000 == 0:
-            logging.debug(f"{100*i/len(mat):.2f}%")
-    return cis_neighbours
+            for i in range(-bin_no, bin_no+1):
+                neighbor_start = row.start + i*bin_size
+                bin_id = region_to_bin(chr_start_bin, bin_size, row.chr, row.start)
+                if neighbor_start!=row.start and neighbor_start>=0 and neighbor_start<=chr_size[row.chr]:
+                    bin1_id = bin_id
+                    bin2_id = region_to_bin(chr_start_bin, bin_size, row.chr, neighbor_start)
+                    if bin1_id>bin2_id:
+                        bin1_id, bin2_id = bin2_id, bin1_id
+                    cis_neighbor_count += bin_pair_counts.get( (bin1_id << 32) + bin2_id, 0)
+        cis_neighbors.append(cis_neighbor_count)
+    logging.debug(f"Done counting neighbors for {len(cis_neighbors):,} regions in {cooler_filename}.")
+    return cis_neighbors
 
 def remove_bad_regions(mat, bin_no, perc_threshold, avg_mappability_threshold):
     """Remove "bad" regions.
@@ -82,6 +109,7 @@ def remove_bad_regions(mat, bin_no, perc_threshold, avg_mappability_threshold):
     # drop no-longer used columns
     mat = mat.drop(columns=[flag, bad_neig, perc])
 
+    logging.debug(f"Done removing \"bad\" regions. {len(mat):,} regions left.")
     return mat
 
 def hic_norm(mat, count_neig, fire):
@@ -103,6 +131,7 @@ def hic_norm(mat, count_neig, fire):
     glm = sm.GLM(y, x, family=sm.families.Poisson())
     res = glm.fit()        
     mat[fire] = mat[count_neig] / np.exp(res.params[0]+mat["F"]*res.params[1]+mat["GC"]*res.params[2]+mat["M"]*res.params[3])
+    logging.debug(f"Done calculating Poisson normalization.")
 
 def quantile_normalize(df_input, columns=None):
     """Perform quantile normalization on the selected columns from a DataFrame.
@@ -129,8 +158,8 @@ def quantile_normalize(df_input, columns=None):
     for col in columns:
         t = np.searchsorted(np.sort(df[col]), df[col])
         df[col] = [rank[i] for i in t]
+    logging.debug(f"Done performing quantile normalization.")
     return df
-
 
 def fire_caller(mat, fire, logpval):
     """Calculate log p-value.
@@ -149,6 +178,7 @@ def fire_caller(mat, fire, logpval):
 
     log_pvalue = - np.log( 1 - st.norm.cdf(mat[fire], loc=fire_mean, scale=fire_std) )
     mat[logpval] = log_pvalue
+    logging.debug("Done FIRE calling.")
 
 def calc_fires(mappability_filename, cooler_filenames, bin_size, neighborhood_region, perc_threshold=.25, avg_mappability_threshold=0.9):
     """Perform FIREcaller algorithm.
@@ -182,12 +212,11 @@ def calc_fires(mappability_filename, cooler_filenames, bin_size, neighborhood_re
         print(f"Error: Mappability file: {mappability_filename} bin size is {mp_bin_size} while --bin_size={bin_size} was provided")
         exit()
 
-#    mat = mat.iloc[:3000] # uncomment to limit the matrix size. useful while debugging
+#    mat = mat.iloc[:5000] # uncomment to limit the matrix size. useful while debugging
 
     for c, cooler_filename in enumerate(cooler_filenames):
-        hic = cooler.Cooler(f"{cooler_filename}::resolutions/{bin_size}")
         # count cis neighbors
-        mat[f"{c}_count_neig"] = count_cis_neighbors(mat, hic, bin_size)
+        mat[f"{c}_count_neig"] = count_cis_neighbors(mat, cooler_filename, bin_size, bin_no)
 
     # remove "bad" regions
     mat = remove_bad_regions(mat, bin_no, perc_threshold, avg_mappability_threshold)
@@ -220,4 +249,6 @@ if __name__ == "__main__":
 
     mat = calc_fires(args.mappability_filename, args.cooler_filenames, args.bin_size, args.neighborhood_region, args.perc_threshold, args.avg_mappability_threshold)
 
-    mat.to_csv(args.output_filename, sep=" ", index=False)
+    mat.to_csv(args.output_filename, sep=" ", index=False, float_format="%.4f")
+
+    logging.debug(f"Result saved to {args.output_filename}")
