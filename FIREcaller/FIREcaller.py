@@ -134,7 +134,7 @@ def hic_norm(mat, count_neig, fire):
     logging.debug(f"Done calculating Poisson normalization.")
 
 def quantile_normalize(df_input, columns=None):
-    """Perform quantile normalization on the selected columns from a DataFrame.
+    """Perform quantile normalization on the selected columns of the DataFrame.
 
     Adopted from: https://github.com/ShawnLYU/Quantile_Normalize/blob/master/quantile_norm.py
 
@@ -236,7 +236,7 @@ def calc_fires(mappability_filename, cooler_filenames, bin_size, neighborhood_re
 
     return mat
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mappability_filename", help="Mappability_file", required=True)
     parser.add_argument("--cooler_filenames", help="Cooler files (.mcool) to perform FIRE on", action='append', required=True)

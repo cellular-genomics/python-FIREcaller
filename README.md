@@ -1,14 +1,14 @@
 # Detect Frequently Interacting REgions (FIREs) in Python
 
+[![PyPI](https://img.shields.io/pypi/v/FIREcaller.svg)](https://pypi.python.org/pypi/FIREcaller)
+
 The project is a port of [the R package for detecting frequently interacting regions (FIREs) from Hi-C data](https://github.com/yycunc/FIREcaller) to Python. FIRE is described in [A Compendium of Chromatin Contact Maps Reveal Spatially Active Regions in the Human Genome](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5478386/) paper.
 
 ## Command line usage
 
-Clone the repository and install the dependencies:
+Install the package:
 ```
-git clone git@github.com:jakublipinski/python-FIREcaller.git
-cd python-FIREcaller
-pip install -r requirements.txt
+python3 -m pip install FIREcaller
 ```
 
 Download [some HiC experiment results](https://data.4dnucleome.org/browse/?experiments_in_set.biosample.biosource.individual.organism.name=human&experiments_in_set.experiment_type.display_title=in+situ+Hi-C&experimentset_type=replicate&type=ExperimentSetReplicate) from the 4D Nucleome database. Choose Contact Matrix (.mcool) as a file type.
@@ -17,7 +17,7 @@ Download the mappability file from [Yunjiang's website](http://enhancer.sdsc.edu
 
 Perform FIRE calling:
 ```
-python FIREcaller.py \
+FIREcaller \
   --cooler_filenames 4DNFIT5YVTLO.mcool \
   --cooler_filenames 4DNFIJTOIGOI.mcool \
   --mappability_filename F_GC_M_Hind3_10Kb_el.GRCh38.txt \
@@ -72,7 +72,7 @@ python scripts/build_hippo_cool.py
 
 Run the FIRE calling:
 ```
-python FIREcaller.py \
+FIREcaller \
   --cooler_filename hippo.mcool \
   --mappability_filename F_GC_M_HindIII_40KB_hg19.txt \
   --bin_size 40000 \
@@ -85,6 +85,6 @@ Compare the `FIRE_ANALYSIS_40KB.txt` and `fires.csv` files.
 
 - [ ] Add option to remove the MHC regions
 - [ ] Calculate the Super FIREs
-- [ ] Convert the script into the Python package
+- [x] Convert the script into the Python package
 
 Let me know if you need any of the above and I'll be happy to implement it. I also accept PRs and comments. Enjoy.
