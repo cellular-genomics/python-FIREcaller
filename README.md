@@ -81,6 +81,10 @@ FIREcaller \
 
 Compare the `FIRE_ANALYSIS_40KB.txt` and `fires.csv` files.
 
+## Citation
+
+Crowley, C., Yang, Y.*, Qiu, Y., Hu, B., Abnousi, A., Lipiński, J., Plewczynski, D., Wu, D., Won, H., Ren, B., Hu, M.*, Li, Y*. (2021) FIREcaller: Detecting Frequently Interacting Regions from Hi-C Data. Computational and Structural Biotechnology Journal, 19: 355–362.
+
 ## TODO:
 
 - [ ] Add option to remove the MHC regions
